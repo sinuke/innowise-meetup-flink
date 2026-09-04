@@ -219,3 +219,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 /.idea/
+*.gz
+*.md5
+logs/
