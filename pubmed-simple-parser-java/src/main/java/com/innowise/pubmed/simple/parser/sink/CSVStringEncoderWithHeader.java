@@ -8,8 +8,8 @@ import java.nio.charset.Charset;
 
 public class CSVStringEncoderWithHeader<IN> implements Encoder<IN> {
 
-    private String charsetName;
-    private String header;
+    private final String charsetName;
+    private final String header;
     private transient Charset charset;
     private boolean isHeaderAdded = false;
 
