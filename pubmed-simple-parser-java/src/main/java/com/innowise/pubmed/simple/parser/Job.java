@@ -13,9 +13,6 @@ import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.connector.file.src.FileSource;
-import org.apache.flink.connector.file.src.enumerate.FileEnumerator;
-import org.apache.flink.connector.file.src.enumerate.NonSplittingRecursiveEnumerator;
-import org.apache.flink.connector.file.src.impl.StaticFileSplitEnumerator;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.BasePathBucketAssigner;
 

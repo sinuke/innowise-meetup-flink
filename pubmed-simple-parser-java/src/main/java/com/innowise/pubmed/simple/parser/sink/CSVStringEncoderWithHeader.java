@@ -13,10 +13,6 @@ public class CSVStringEncoderWithHeader<IN> implements Encoder<IN> {
     private transient Charset charset;
     private boolean isHeaderAdded = false;
 
-    public CSVStringEncoderWithHeader(String header) {
-        this(header, "UTF-8");
-    }
-
     public CSVStringEncoderWithHeader(String header, String charsetName) {
         this.header = header;
         this.charsetName = charsetName;
