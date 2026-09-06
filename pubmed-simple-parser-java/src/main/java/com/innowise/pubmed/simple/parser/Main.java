@@ -6,11 +6,14 @@ public class Main {
 
     private static final String INPUT_DATA_PATH = "../input_raws/pubmed_sample_120K_records/";
     private static final String OUTPUT_DATA_BASE_PATH = "../output_csv/java/";
+    private static final int PARALLELISM = 1;
+    private static final int PORT = 8082;
 
     public static void main(String[] args) throws Exception {
+        var env = Utils.createEnv(PARALLELISM, PORT);
+
         var app = Job.builder()
-                .parallelism(1)
-                .port(8082)
+                .env(env)
                 .build();
         
         var result = app.run(

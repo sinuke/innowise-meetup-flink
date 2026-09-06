@@ -14,20 +14,16 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.connector.file.src.FileSource;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.BasePathBucketAssigner;
 
 @Builder
 public class Job {
 
-    @Builder.Default
-    private int parallelism = 1;
-    @Builder.Default
-    private int port = 0;
+    private StreamExecutionEnvironment env;
 
     @SneakyThrows
     public JobExecutionResult run(String inputPath, String outputPath) {
-        var env = Utils.createEnv(parallelism, port);
-
         var inputStream = env.fromSource(
                 FileSource
                         .forRecordStreamFormat(new PubMedStreamFormat(), new Path(inputPath))
