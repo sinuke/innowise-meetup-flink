@@ -14,13 +14,11 @@ public class Main {
 
         var app = Job.builder()
                 .env(env)
+                .inputPath(INPUT_DATA_PATH)
+                .outputPath(OUTPUT_DATA_BASE_PATH)
                 .build();
         
-        var result = app.run(
-//                INPUT_DATA_PATH,
-                "../input_raws/full_pubmed_baseline_2026/",
-                OUTPUT_DATA_BASE_PATH
-        );
+        var result = app.run();
 
         Utils.printResults(result);
     }
