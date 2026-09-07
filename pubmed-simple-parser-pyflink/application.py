@@ -1,12 +1,12 @@
 import glob
-import gzip
 import os
-from lxml import etree
-from pyflink.common import Types, Configuration, WatermarkStrategy
+from pyflink.common import Types, Configuration
 from pyflink.datastream import StreamExecutionEnvironment, RuntimeExecutionMode, ReduceFunction
+from parser import parse_pubmed_gz
+
 
 PARALLELISM = 1
-INPUT_DATA_PATH = '../data/pubmed_sample_120K_records/'
+INPUT_DATA_PATH = '../input_raws/pubmed_sample_120K_records/'
 EXECUTION_MODE = 'process'
 UI_PORT = '8081'
 
@@ -21,53 +21,6 @@ def create_env(parallelism: int) -> StreamExecutionEnvironment:
     env = StreamExecutionEnvironment.get_execution_environment(config)
     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
     return env.set_parallelism(parallelism)
-
-
-def parse_pubmed_gz(file_path: str):
-    with gzip.open(file_path, 'rb') as f:
-        context = iter(etree.iterparse(f, events=('start', 'end')))
-        _, root = next(context)
-
-        for event, elem in context:
-            if event == 'end' and elem.tag == 'PubmedArticle':
-
-                pmid = ''
-                title = ''
-                issn = ''
-                authors = []
-
-                citation = elem.find('MedlineCitation')
-
-                if citation is not None:
-                    pmid_elem = citation.find('PMID')
-                    if pmid_elem is not None and pmid_elem.text:
-                        pmid = pmid_elem.text
-
-                    article = citation.find('Article')
-                    if article is not None:
-                        title_elem = article.find('ArticleTitle')
-                        if title_elem is not None:
-                            title = ''.join(title_elem.itertext()).strip()
-
-                        issn_elem = article.find('Journal/ISSN')
-                        if issn_elem is not None and issn_elem.text:
-                            issn = issn_elem.text
-
-                        for author in article.findall('AuthorList/Author'):
-                            fore = author.findtext('ForeName', default='').strip()
-                            last = author.findtext('LastName', default='').strip()
-
-                            if fore or last:
-                                authors.append(f'{fore} {last}'.strip())
-                            else:
-                                collective = author.findtext('CollectiveName', default='').strip()
-                                if collective:
-                                    authors.append(collective)
-
-                yield pmid, title, issn, authors
-
-                elem.clear()
-                root.clear()
 
 
 class ReduceCount(ReduceFunction):
