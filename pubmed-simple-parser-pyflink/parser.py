@@ -2,6 +2,7 @@ import gzip
 import xml.parsers.expat
 
 _CHUNK_SIZE = 1 << 16  # 64 KiB
+_LEAF_TAGS = frozenset({'PMID', 'ISSN', 'ForeName', 'LastName', 'CollectiveName'})
 
 
 def _make_parser(pending: list):
@@ -15,7 +16,7 @@ def _make_parser(pending: list):
         'pmid': None, 'title': None, 'issn': None, 'authors': [],
         'fore_name': '', 'last_name': '', 'collective_name': '',
         'in_medline_citation': False, 'in_article_title': False, 'in_author': False,
-        'text_buf': [], 'title_buf': [],
+        'capturing_leaf': False, 'text_buf': [], 'title_buf': [],
     }
 
     def reset_record_state():
@@ -23,10 +24,10 @@ def _make_parser(pending: list):
             pmid=None, title=None, issn=None, authors=[],
             fore_name='', last_name='', collective_name='',
             in_medline_citation=False, in_article_title=False, in_author=False,
+            capturing_leaf=False,
         )
 
     def start_element(name, attrs):
-        state['text_buf'] = []
         if name == 'MedlineCitation':
             state['in_medline_citation'] = True
         elif name == 'ArticleTitle':
@@ -37,35 +38,42 @@ def _make_parser(pending: list):
             state['fore_name'] = ''
             state['last_name'] = ''
             state['collective_name'] = ''
+        elif name in _LEAF_TAGS:
+            state['capturing_leaf'] = True
+            state['text_buf'] = []
 
     def char_data(data):
-        state['text_buf'].append(data)
         if state['in_article_title']:
             state['title_buf'].append(data)
+        elif state['capturing_leaf']:
+            state['text_buf'].append(data)
 
     def end_element(name):
-        text = ''.join(state['text_buf']).strip()
-
         if name == 'MedlineCitation':
             state['in_medline_citation'] = False
         elif name == 'PMID':
             if state['in_medline_citation'] and state['pmid'] is None:
-                state['pmid'] = text
+                state['pmid'] = ''.join(state['text_buf']).strip()
+            state['capturing_leaf'] = False
         elif name == 'ArticleTitle':
             state['in_article_title'] = False
             state['title'] = ''.join(state['title_buf']).strip()
         elif name == 'ISSN':
             if state['issn'] is None:
-                state['issn'] = text
+                state['issn'] = ''.join(state['text_buf']).strip()
+            state['capturing_leaf'] = False
         elif name == 'ForeName':
             if state['in_author']:
-                state['fore_name'] = text
+                state['fore_name'] = ''.join(state['text_buf']).strip()
+            state['capturing_leaf'] = False
         elif name == 'LastName':
             if state['in_author']:
-                state['last_name'] = text
+                state['last_name'] = ''.join(state['text_buf']).strip()
+            state['capturing_leaf'] = False
         elif name == 'CollectiveName':
             if state['in_author']:
-                state['collective_name'] = text
+                state['collective_name'] = ''.join(state['text_buf']).strip()
+            state['capturing_leaf'] = False
         elif name == 'Author':
             state['in_author'] = False
             if state['fore_name'] or state['last_name']:
