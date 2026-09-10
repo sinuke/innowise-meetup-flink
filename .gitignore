@@ -268,5 +268,6 @@ gradle-app.setting
 .classpath
 
 /pubmed-simple-parser-pyflink/uv.lock
+/pubmed-simple-parser-pyspark/uv.lock
 /pubmed-data-downloader/uv.lock
 *.iml
