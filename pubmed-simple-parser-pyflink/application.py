@@ -1,5 +1,6 @@
 import glob
 import os
+import sys
 import time
 from pyflink.common import Types, Configuration, Row
 from pyflink.datastream import StreamExecutionEnvironment, RuntimeExecutionMode, ReduceFunction
@@ -12,11 +13,22 @@ from parser import parse_pubmed_gz
 PARALLELISM = 1
 INPUT_DATA_PATH = '../input_raws/pubmed_sample_120K_records/'
 OUTPUT_DATA_BASE_PATH = '../output_csv/pyflink/'
-EXECUTION_MODE = 'process'
+EXECUTION_MODE = 'thread'
 UI_PORT = '8081'
 
 os.environ['no_proxy'] = "localhost,127.0.0.1"
-os.environ['_python_worker_execution_mode'] = EXECUTION_MODE
+os.environ['_python_worker_execution_mode'] = 'process'
+
+if EXECUTION_MODE == 'thread':
+    # Thread mode embeds a CPython interpreter (via pemja) directly inside the JVM. That embedded
+    # interpreter does not inherit this venv's site-packages on its own, so without PYTHONPATH set
+    # it fails with "ModuleNotFoundError: No module named 'pemja'" (and can't see pyflink either).
+    # Flink's TaskManager subprocess inherits our environment, so setting it here (before
+    # env.execute() spawns that subprocess) is enough — no need to export it in the shell.
+    venv_site_packages = os.path.join(sys.prefix, 'Lib', 'site-packages')
+    os.environ['PYTHONPATH'] = os.pathsep.join(
+        filter(None, [venv_site_packages, os.environ.get('PYTHONPATH')])
+    )
 
 
 def create_env(parallelism: int = 0, port: int = 0) -> StreamExecutionEnvironment:
