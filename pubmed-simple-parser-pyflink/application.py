@@ -11,8 +11,8 @@ from parser import parse_pubmed_gz
 
 
 PARALLELISM = 0
-INPUT_DATA_PATH = '../input_raws/full_pubmed_baseline_2026/'
-# INPUT_DATA_PATH = '../input_raws/pubmed_sample_120K_records/'
+# INPUT_DATA_PATH = '../input_raws/full_pubmed_baseline_2026/'
+INPUT_DATA_PATH = '../input_raws/pubmed_sample_120K_records/'
 OUTPUT_DATA_BASE_PATH = '../output_csv/pyflink/'
 EXECUTION_MODE = 'thread'
 UI_PORT = '8081'
