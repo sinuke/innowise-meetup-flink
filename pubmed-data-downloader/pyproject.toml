@@ -1,8 +1,8 @@
 [project]
 name = "pubmed-data-downloader"
 version = "1.0.0"
-requires-python = ">=3.12.10"
+requires-python = ">=3.12.10,<3.13"
 dependencies = [
-    "anyio>=4.15.0",
-    "httpx>=0.28.1",
+    "anyio==4.15.0",
+    "httpx==0.28.1",
 ]

@@ -1,8 +1,8 @@
 [project]
 name = "pubmed-simple-parser-pyflink"
 version = "1.0.0"
-requires-python = ">=3.12.10"
+requires-python = ">=3.12.10,<3.13"
 dependencies = [
-    "apache-flink>=2.3.0",
-    "pemja; sys_platform == 'win32'",
+    "apache-flink==2.3.0",
+    "pemja==0.5.7; sys_platform == 'win32'",
 ]
