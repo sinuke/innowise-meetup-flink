@@ -26,8 +26,6 @@ public class Job {
 
     @SneakyThrows
     public JobExecutionResult run() {
-        validateParams();
-
         var inputStream = env.fromSource(
                 FileSource
                         .forRecordStreamFormat(new PubMedStreamFormat(), new Path(inputPath))
@@ -63,17 +61,6 @@ public class Job {
                 .name("Saving results as CSV on disk");
 
         return env.execute("PubMed simple parser");
-    }
-
-    private void validateParams() {
-        if (env == null)
-            throw new RuntimeException("Stream execution environment should be defines!");
-
-        if (inputPath == null || inputPath.isEmpty())
-            throw new RuntimeException("Input path shouldn't be null or empty!");
-
-        if (outputPath == null || outputPath.isEmpty())
-            throw new RuntimeException("Output path shouldn't be null or empty!");
     }
 
 }
