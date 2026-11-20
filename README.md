@@ -1,83 +1,82 @@
-# PubMed XML processing: Flink (Java) vs PyFlink vs PySpark
+# Обработка PubMed XML: Flink (Java) vs PyFlink vs PySpark
 
-One task, three implementations, the same data:
+Одна задача, три реализации, одни и те же данные:
 
-> Read the full PubMed 2026 baseline (1334 `.xml.gz` files, ~51 GB compressed, ~300 GB of XML, ~40M articles), extract the journal ISSN of every article and count articles per ISSN.
+> Прочитать полный PubMed baseline 2026 (1334 файла `.xml.gz`, ~51 ГБ в сжатом виде, ~300 ГБ XML, ~40 млн статей), извлечь ISSN журнала для каждой статьи и посчитать количество статей на каждый ISSN.
 
-[ISSN](https://www.issn.org/) (International Standard Serial Number) is the 8-character identifier of a periodical, e.g. `0028-0836` for *Nature*. Counting articles per ISSN effectively means counting articles per journal.
+[ISSN](https://www.issn.org/) (International Standard Serial Number) — 8-символьный идентификатор периодического издания, например `0028-0836` у *Nature*. Подсчёт статей по ISSN — по сути подсчёт статей по журналам.
 
-The repository was prepared for an internal Data Engineering meetup. The goal is to compare how the same batch job looks, runs and scales on **Apache Flink with Java**, **PyFlink** and **PySpark 4**.
+Репозиторий подготовлен для внутреннего митапа по Data Engineering. Цель — сравнить, как одна и та же batch-задача выглядит, работает и масштабируется на **Apache Flink с Java**, **PyFlink** и **PySpark 4**.
 
-## Results at a glance
+## Результаты вкратце
 
-Full dataset (39.5M articles with an ISSN), net processing time:
+Полный датасет (39,5 млн статей с ISSN), чистое время обработки:
 
-| | 1 thread (Intel) | 18 threads (Intel) | 1 thread (Ryzen) | 16 threads (Ryzen) |
+| | 1 поток (Intel) | 18 потоков (Intel) | 1 поток (Ryzen) | 16 потоков (Ryzen) |
 |---|---|---|---|---|
-| Flink + Java | 53.6 min | **10.7 min** | 67.3 min | **6.5 min** |
-| PySpark | 59.3 min | 13.0 min | 60.4 min | 7.7 min |
-| PyFlink | 3.1 h | 3.2 h | — | — |
+| Flink + Java | 47 мин 19 с | **7 мин 34 с** | 46 мин 57 с | **4 мин 56 с** |
+| PySpark | — | 14 мин 29 с | 59 мин 15 с | 7 мин 14 с |
+| PyFlink | 2 ч 07 мин 36 с | — | 2 ч 04 мин 27 с | 2 ч 41 мин 05 с |
 
-- Intel: Core Ultra 5 125H, 40 GB DDR5-5600, NVMe PCIe 4.0.
-- Ryzen: Ryzen 9 7940HS, 32 GB DDR5-5200, NVMe PCIe 4.0 (Samsung 980 Pro).
+`—` — не измерялось.
 
-Java and PySpark scale 5–10x with parallelism. PyFlink does not scale at all. Flink has no built-in XML format, but its `StreamFormat` interface plus the JDK's standard StAX parser make a custom XML source easy to write in Java, and that source runs inside the JVM. PyFlink cannot plug a Python format into `FileSource`, so XML parsing runs in a Python UDF. In PyFlink's `thread` execution mode all subtasks of one JVM share a single CPython interpreter, and therefore a single GIL.
+- Intel: Core Ultra 5 125H, 40 ГБ DDR5-5600, NVMe PCIe 4.0.
+- Ryzen: Ryzen 9 7940HS, 32 ГБ DDR5-5200, NVMe PCIe 4.0 (Samsung 980 Pro).
 
-Raw numbers: [`statistics/PubMed simple parser statistics.xlsx`](statistics/). Flink/Spark UI screenshots: [`statistics/intel/`](statistics/intel/) and [`statistics/ryzen/`](statistics/ryzen/).
+Java и PySpark ускоряются в 6–10 раз при увеличении параллелизма (Java: в 6,3 раза на Intel и в 9,5 раза на Ryzen; PySpark: в 8,2 раза на Ryzen). PyFlink не масштабируется совсем: на Ryzen с 16 потоками он работал даже медленнее, чем с одним. Встроенного XML-формата во Flink нет, но интерфейс `StreamFormat` вместе со стандартным StAX-парсером из JDK позволяет легко написать собственный XML-источник на Java, и этот источник работает внутри JVM. PyFlink не умеет подключать Python-формат к `FileSource`, поэтому разбор XML выполняется в Python UDF. В режиме выполнения `thread` все подзадачи одной JVM используют один общий интерпретатор CPython, а значит, и один общий GIL.
 
-## Repository layout
+## Структура репозитория
 
-| Path | What it is |
+| Путь | Что это |
 |---|---|
-| [`pubmed-data-downloader/`](pubmed-data-downloader/) | Async downloader of the PubMed 2026 baseline with MD5 verification |
-| [`pubmed-simple-parser-java/`](pubmed-simple-parser-java/) | Flink 2.3 job in Java 21: custom `StreamFormat` + StAX parser |
-| [`pubmed-simple-parser-pyflink/`](pubmed-simple-parser-pyflink/) | The same job on the PyFlink DataStream API, XML parsed with `expat` |
-| [`pubmed-simple-parser-pyspark/`](pubmed-simple-parser-pyspark/) | The same job on PySpark 4.2, using Spark's built-in XML data source |
-| [`statistics/`](statistics/) | Timing spreadsheet and Flink/Spark UI screenshots |
-| `input_raws/` | Input data (not in git, see below). Contains the PubMed DTD for reference |
-| `output_csv/` | Job results (not in git, created on first run) |
+| [`pubmed-data-downloader/`](pubmed-data-downloader/) | Асинхронный загрузчик PubMed baseline 2026 с проверкой MD5 |
+| [`pubmed-simple-parser-java/`](pubmed-simple-parser-java/) | Задача на Flink 2.3 и Java 21: собственный `StreamFormat` + StAX-парсер |
+| [`pubmed-simple-parser-pyflink/`](pubmed-simple-parser-pyflink/) | Та же задача на PyFlink DataStream API, XML разбирается через `expat` |
+| [`pubmed-simple-parser-pyspark/`](pubmed-simple-parser-pyspark/) | Та же задача на PySpark 4.2 со встроенным XML-источником Spark |
+| `input_raws/` | Входные данные (не в git, см. ниже). Для справки здесь лежит DTD PubMed |
+| `output_csv/` | Результаты задач (не в git, создаётся при первом запуске) |
 
-All three jobs produce the same output: a CSV with header `issn,count`, written to `output_csv/<implementation>/<timestamp>/`.
+Все три задачи выдают одинаковый результат: CSV с заголовком `issn,count`, который записывается в `output_csv/<реализация>/<timestamp>/`.
 
-## Prerequisites
+## Что нужно установить
 
-| Tool | Version | Needed for |
+| Инструмент | Версия | Для чего |
 |---|---|---|
-| JDK | 21 recommended (the Java project targets 21). The jobs were run with JDK 25 | All three jobs: Flink and Spark run on the JVM, PyFlink and PySpark start a JVM under the hood |
-| Python | **3.12.10** for all Python projects (pinned in `.python-version` and `requires-python = ">=3.12.10,<3.13"`). uv downloads it automatically if it is not installed | Downloader, PyFlink, PySpark |
-| [uv](https://docs.astral.sh/uv/) | any recent | Python dependency management (`uv sync`, `uv run`) |
-| Gradle | not needed, the wrapper (`gradlew`, Gradle 9.6) is included | Java job |
-| IntelliJ IDEA (or another IDE with Gradle + Lombok support) | any recent | Running the Java job (see below) |
-| ~60 GB free disk space | | Full dataset (51 GB) + outputs |
+| JDK | рекомендуется 21 (Java-проект собирается под 21). Замеры делались на JDK 25 | Все три задачи: Flink и Spark работают на JVM, PyFlink и PySpark запускают JVM внутри |
+| Python | **3.12.10** для всех Python-проектов (зафиксирован в `.python-version` и `requires-python = ">=3.12.10,<3.13"`). Если он не установлен, uv скачает его сам | Загрузчик, PyFlink, PySpark |
+| [uv](https://docs.astral.sh/uv/) | любая свежая | Управление Python-зависимостями (`uv sync`, `uv run`) |
+| Gradle | не нужен, wrapper (`gradlew`, Gradle 9.6) уже в репозитории | Java-задача |
+| IntelliJ IDEA (или другая IDE с поддержкой Gradle и Lombok) | любая свежая | Запуск Java-задачи (см. ниже) |
+| ~60 ГБ свободного места на диске | | Полный датасет (51 ГБ) + результаты |
 
-Make sure `java` is on `PATH` and/or `JAVA_HOME` points to the JDK.
+Убедитесь, что `java` есть в `PATH` и/или `JAVA_HOME` указывает на JDK.
 
-### Windows-specific requirements
+### Особенности Windows
 
-The project was developed and run on Windows 11.
+Проект разрабатывался и запускался на Windows 11.
 
-- **PySpark** needs Hadoop's native Windows binaries (`winutils.exe`, `hadoop.dll`) to write files. Put them into a folder such as `C:\Users\<you>\.hadoop\bin` and set `HADOOP_HOME=C:\Users\<you>\.hadoop`.
-- **PyFlink needs a C/C++ compiler on Windows.** Two dependencies have no Windows wheels on PyPI, so `uv sync` compiles them from source:
-  - [`pemja`](https://pypi.org/project/pemja/): embeds CPython into the JVM, required by `thread` execution mode. It is compiled against the JDK's JNI headers, so `JAVA_HOME` must point to a JDK when you run `uv sync`.
-  - [`crcmod`](https://pypi.org/project/crcmod/): a transitive dependency of Apache Beam, which PyFlink uses internally.
+- **PySpark** для записи файлов нужны нативные бинарники Hadoop под Windows (`winutils.exe`, `hadoop.dll`). Положите их в папку вроде `C:\Users\<you>\.hadoop\bin` и задайте `HADOOP_HOME=C:\Users\<you>\.hadoop`.
+- **PyFlink на Windows нужен компилятор C/C++.** У двух зависимостей нет wheel-пакетов под Windows на PyPI, поэтому `uv sync` собирает их из исходников:
+  - [`pemja`](https://pypi.org/project/pemja/): встраивает CPython в JVM, нужен для режима выполнения `thread`. Компилируется с JNI-заголовками из JDK, поэтому при запуске `uv sync` переменная `JAVA_HOME` должна указывать на JDK.
+  - [`crcmod`](https://pypi.org/project/crcmod/): транзитивная зависимость Apache Beam, который PyFlink использует внутри.
 
-  Install **Visual Studio Build Tools** (tested with Build Tools 2026) with the **"Desktop development with C++"** workload before running `uv sync`. Without it the installation fails.
-- **Keep `pemja` at version 0.5.7.** The Java side of pemja is bundled inside Flink 2.3 (`flink-python-2.3.0.jar` contains `com.alibaba:pemja:0.5.7`), so the Python package should be the same version. On Linux/macOS `apache-flink` pins it itself, but on Windows it does not declare `pemja` at all. That is why [`pyproject.toml`](pubmed-simple-parser-pyflink/pyproject.toml) pins it explicitly: `pemja==0.5.7; sys_platform == 'win32'`.
-- **Use Python 3.12, not newer.** `apache-flink` 2.3 supports Python 3.9–3.12 and pins old versions of its dependencies (`apache-beam ≤ 2.61`, `pandas < 2.3`, `pyarrow < 21`). On Python 3.13+ these versions have no ready-made wheels, uv tries to build them from source, and the build fails. That is why every Python project has a `.python-version` file (`3.12.10`) and `requires-python = ">=3.12.10,<3.13"`: uv uses Python 3.12.10 even if a newer Python is installed. If you install dependencies without uv, create the virtual environment with Python 3.12 yourself.
+  Перед `uv sync` установите **Visual Studio Build Tools** (проверено на Build Tools 2026) с рабочей нагрузкой **«Разработка классических приложений на C++»** («Desktop development with C++»). Без неё установка завершится ошибкой.
+- **Оставляйте `pemja` версии 0.5.7.** Java-часть pemja уже встроена во Flink 2.3 (`flink-python-2.3.0.jar` содержит `com.alibaba:pemja:0.5.7`), поэтому Python-пакет должен быть той же версии. На Linux/macOS `apache-flink` сам фиксирует эту версию, а на Windows вообще не объявляет `pemja` в зависимостях. Поэтому в [`pyproject.toml`](pubmed-simple-parser-pyflink/pyproject.toml) она зафиксирована явно: `pemja==0.5.7; sys_platform == 'win32'`.
+- **Используйте Python 3.12, не новее.** `apache-flink` 2.3 поддерживает Python 3.9–3.12 и фиксирует старые версии своих зависимостей (`apache-beam ≤ 2.61`, `pandas < 2.3`, `pyarrow < 21`). Для Python 3.13+ готовых wheel-пакетов этих версий нет, uv пытается собрать их из исходников, и сборка падает. Поэтому в каждом Python-проекте есть файл `.python-version` (`3.12.10`) и `requires-python = ">=3.12.10,<3.13"`: uv использует Python 3.12.10, даже если установлена более новая версия. Если ставите зависимости без uv, создайте виртуальное окружение на Python 3.12 сами.
 
 ### Linux / macOS
 
-Not tested. Things to watch out for:
+Не проверялось. На что обратить внимание:
 
-- `pemja` comes with `apache-flink` as a regular dependency with ready-made wheels, so a compiler should not be needed. Python 3.12 is still required.
-- [`pubmed-simple-parser-pyflink/application.py`](pubmed-simple-parser-pyflink/application.py) adds `<venv>/Lib/site-packages` to `PYTHONPATH`, which is the Windows venv layout. On Linux/macOS the path is `<venv>/lib/python3.12/site-packages`. Adjust it if the embedded interpreter cannot import `pyflink`.
-- `HADOOP_HOME` / `winutils` are not needed.
+- `pemja` приходит вместе с `apache-flink` как обычная зависимость с готовыми wheel-пакетами, так что компилятор не должен понадобиться. Python 3.12 всё равно обязателен.
+- [`pubmed-simple-parser-pyflink/application.py`](pubmed-simple-parser-pyflink/application.py) добавляет в `PYTHONPATH` путь `<venv>/Lib/site-packages` — это структура venv на Windows. На Linux/macOS путь будет `<venv>/lib/python3.12/site-packages`. Поправьте его, если встроенный интерпретатор не может импортировать `pyflink`.
+- `HADOOP_HOME` и `winutils` не нужны.
 
-## 1. Get the data
+## 1. Скачать данные
 
-Data files are not stored in git (`*.gz` is ignored).
+Файлы данных в git не хранятся (`*.gz` в игноре).
 
-### Full dataset (~51 GB)
+### Полный датасет (~51 ГБ)
 
 ```bash
 cd pubmed-data-downloader
@@ -85,13 +84,13 @@ uv sync
 uv run python downloader.py
 ```
 
-This downloads `pubmed26n0001.xml.gz` … `pubmed26n1334.xml.gz` and their `.md5` files from `https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/` into `input_raws/full_pubmed_baseline_2026/`, five files at a time. Each archive is checked against its MD5. The script is safe to rerun: existing files are skipped and re-verified.
+Скрипт скачивает `pubmed26n0001.xml.gz` … `pubmed26n1334.xml.gz` и их `.md5`-файлы с `https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/` в `input_raws/full_pubmed_baseline_2026/`, по пять файлов одновременно. Каждый архив проверяется по MD5. Скрипт можно безопасно перезапускать: уже скачанные файлы пропускаются и проверяются заново.
 
-> **Note:** NCBI replaces the baseline once a year (usually around December–January). After the 2027 baseline is published, the `pubmed26n*` files will disappear from the FTP. The file prefix (`pubmed26n`) and the file count (1334) are hardcoded in [`downloader.py`](pubmed-data-downloader/downloader.py) and need to be updated then.
+> **Примечание:** NCBI обновляет baseline раз в год (обычно в декабре–январе). После публикации baseline 2027 файлы `pubmed26n*` исчезнут с FTP. Префикс файлов (`pubmed26n`) и их количество (1334) зашиты в [`downloader.py`](pubmed-data-downloader/downloader.py) — тогда их нужно будет обновить.
 
-### Small sample (4 files, ~35 MB, ~115K articles)
+### Небольшая выборка (4 файла, ~35 МБ, ~115 тыс. статей)
 
-Good for a quick check that everything works: each job takes seconds. The sample is just four files from the baseline:
+Подходит для быстрой проверки, что всё работает: каждая задача выполняется за секунды. Выборка — это просто четыре файла из baseline:
 
 ```bash
 mkdir -p input_raws/pubmed_sample_120K_records
@@ -101,45 +100,45 @@ for n in 0009 0176 0332 0457; do
 done
 ```
 
-If the full dataset is already downloaded, copy these four files from `input_raws/full_pubmed_baseline_2026/` instead.
+Если полный датасет уже скачан, можно просто скопировать эти четыре файла из `input_raws/full_pubmed_baseline_2026/`.
 
-Expected result on the sample: 3 202 rows (ISSNs), counts summing to 114 728.
+Ожидаемый результат на выборке: 3 202 строки (ISSN), сумма счётчиков — 114 728.
 
-## 2. Configure the jobs
+## 2. Настроить задачи
 
-There are no command-line arguments. Input path, parallelism and the web UI port are constants at the top of each entry point. Switch between the sample (`../input_raws/pubmed_sample_120K_records/`) and the full dataset (`../input_raws/full_pubmed_baseline_2026/`) by editing them. In the Python scripts both paths are already there, one of them commented out.
+Аргументов командной строки нет. Путь к входным данным, параллелизм и порт веб-интерфейса задаются константами в начале каждой точки входа. Чтобы переключиться между выборкой (`../input_raws/pubmed_sample_120K_records/`) и полным датасетом (`../input_raws/full_pubmed_baseline_2026/`), отредактируйте их. В Python-скриптах оба пути уже прописаны, один из них закомментирован.
 
-| Job | File | Constants |
+| Задача | Файл | Константы |
 |---|---|---|
 | Java | [`Main.java`](pubmed-simple-parser-java/src/main/java/com/innowise/pubmed/simple/parser/Main.java) | `INPUT_DATA_PATH`, `PARALLELISM`, `PORT` (8082) |
 | PyFlink | [`application.py`](pubmed-simple-parser-pyflink/application.py) | `INPUT_DATA_PATH`, `PARALLELISM`, `UI_PORT` (8081), `EXECUTION_MODE` |
 | PySpark | [`application.py`](pubmed-simple-parser-pyspark/application.py) | `INPUT_DATA_PATH`, `PARALLELISM`, `UI_PORT` (8083) |
 
-Paths are relative (`../input_raws/...`, `../output_csv/...`), so **every job must be started from its own sub-project directory**.
+Пути относительные (`../input_raws/...`, `../output_csv/...`), поэтому **каждую задачу нужно запускать из директории её подпроекта**.
 
-## 3. Run
+## 3. Запустить
 
-Each job prints its processing time at the end. While a job is running, its web UI is available at the port above (Flink UI for the Java and PyFlink jobs, Spark UI for PySpark).
+В конце каждая задача выводит время обработки. Пока задача работает, её веб-интерфейс доступен на указанном выше порту (Flink UI для Java и PyFlink, Spark UI для PySpark).
 
 ### Flink + Java
 
-1. Open `pubmed-simple-parser-java/` in IntelliJ IDEA as a Gradle project and let it import the dependencies.
-2. Run `com.innowise.pubmed.simple.parser.Main` with the working directory set to `pubmed-simple-parser-java/` (IntelliJ's default for Gradle projects).
+1. Откройте `pubmed-simple-parser-java/` в IntelliJ IDEA как Gradle-проект и дождитесь импорта зависимостей.
+2. Запустите `com.innowise.pubmed.simple.parser.Main` с рабочей директорией `pubmed-simple-parser-java/` (для Gradle-проектов в IntelliJ это значение по умолчанию).
 3. Flink UI: http://localhost:8082
 
-The job runs on a local embedded Flink cluster (MiniCluster), so no Flink installation is needed. `./gradlew build` compiles the project from the command line, but there is no `run` task, so the job is started from the IDE.
+Задача выполняется на локальном встроенном кластере Flink (MiniCluster), устанавливать Flink не нужно. `./gradlew build` собирает проект из командной строки, но задачи `run` нет, поэтому задача запускается из IDE.
 
 ### PyFlink
 
 ```bash
 cd pubmed-simple-parser-pyflink
-uv sync                     # Windows: needs Visual Studio Build Tools, see Prerequisites
+uv sync                     # Windows: нужны Visual Studio Build Tools, см. «Что нужно установить»
 uv run python application.py
 ```
 
-Flink UI: http://localhost:8081. The job runs on a local MiniCluster started by PyFlink.
+Flink UI: http://localhost:8081. Задача выполняется на локальном MiniCluster, который запускает PyFlink.
 
-`EXECUTION_MODE = 'thread'` is the default and is ~20x faster than PyFlink's own default `'process'` on this job. Do not change `_python_worker_execution_mode`: it is an unrelated internal setting and must stay `'process'`. See [`CLAUDE.md`](CLAUDE.md) for details.
+По умолчанию стоит `EXECUTION_MODE = 'thread'`: на этой задаче он в ~20 раз быстрее, чем стандартный для PyFlink режим `'process'`. Не меняйте `_python_worker_execution_mode`: это не связанная с ним внутренняя настройка, она должна оставаться `'process'`. Подробности — в [`CLAUDE.md`](CLAUDE.md).
 
 ### PySpark
 
@@ -149,23 +148,22 @@ uv sync
 uv run python application.py
 ```
 
-Spark UI: http://localhost:8083 (only while the job is running). Spark runs in local mode (`local[PARALLELISM]`), no Spark installation is needed.
+Spark UI: http://localhost:8083 (только пока задача работает). Spark работает в локальном режиме (`local[PARALLELISM]`), устанавливать Spark не нужно.
 
-## 4. Check the result
+## 4. Проверить результат
 
 ```bash
 cd output_csv/<java|pyflink|pyspark>/<timestamp>
 cat $(find . -type f ! -name '.*' ! -name '_SUCCESS') | grep -v '^issn' | awk -F, '{s+=$2; n++} END {print n " ISSNs, " s " articles"}'
 ```
 
-Expected values:
+Ожидаемые значения:
 
-| Dataset | ISSNs | Articles with an ISSN |
+| Датасет | ISSN | Статей с ISSN |
 |---|---|---|
-| Sample | 3 202 | 114 728 |
-| Full baseline 2026 | 38 326 | 39 536 019 |
+| Выборка | 3 202 | 114 728 |
+| Полный baseline 2026 | 38 326 | 39 536 019 |
 
-## More details
+## Подробнее
 
-- [`CLAUDE.md`](CLAUDE.md): architecture of each implementation and the PyFlink performance investigation.
-- [`statistics/`](statistics/): timings and UI screenshots.
+- [`CLAUDE.md`](CLAUDE.md): архитектура каждой реализации и разбор производительности PyFlink.
