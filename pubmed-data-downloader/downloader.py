@@ -9,11 +9,13 @@ from datetime import datetime
 
 BASE_URL = "https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/"
 TARGET_DIR = r"../input_raws/full_pubmed_baseline_2026"
+MD5_DIR = r"../input_raws/full_pubmed_baseline_2026_md5"
 LOGS_SUBDIR = r"./logs"
 MAX_CONCURRENT_DOWNLOADS = 5
 
 
 os.makedirs(TARGET_DIR, exist_ok=True)
+os.makedirs(MD5_DIR, exist_ok=True)
 os.makedirs(LOGS_SUBDIR, exist_ok=True)
 
 
@@ -60,7 +62,7 @@ async def download_md5(client, file_number, semaphore):
     """Phase 1: Fetch and save the tiny .md5 file text, skipping if already present."""
     md5_filename = f"pubmed26n{file_number:04d}.xml.gz.md5"
     url = f"{BASE_URL}{md5_filename}"
-    file_path = os.path.join(TARGET_DIR, md5_filename)
+    file_path = os.path.join(MD5_DIR, md5_filename)
     
     # Skip logic for Phase 1
     if os.path.exists(file_path):
@@ -85,7 +87,7 @@ async def download_archive(client, file_number, semaphore):
     filename = f"pubmed26n{file_number:04d}.xml.gz"
     url = f"{BASE_URL}{filename}"
     file_path = os.path.join(TARGET_DIR, filename)
-    md5_path = os.path.join(TARGET_DIR, f"{filename}.md5")
+    md5_path = os.path.join(MD5_DIR, f"{filename}.md5")
     
     if not os.path.exists(md5_path):
         logging.error(f"Skipping archive {filename} because local matching MD5 file is missing.")
@@ -124,6 +126,7 @@ async def main():
     logging.info("="*60)
     logging.info("Starting Async PubMed 2026 Baseline Download Session via httpx")
     logging.info(f"Destination: {TARGET_DIR}")
+    logging.info(f"Checksums:   {MD5_DIR}")
     logging.info("="*60)
     
     file_numbers = list(range(1, 1335))  # Full Baseline: 0001 to 1334

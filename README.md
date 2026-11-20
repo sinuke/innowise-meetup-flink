@@ -82,7 +82,7 @@ uv sync
 uv run python downloader.py
 ```
 
-Скрипт скачивает `pubmed26n0001.xml.gz` … `pubmed26n1334.xml.gz` и их `.md5`-файлы с `https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/` в `input_raws/full_pubmed_baseline_2026/`, по пять файлов одновременно. Каждый архив проверяется по MD5. Скрипт можно безопасно перезапускать: уже скачанные файлы пропускаются и проверяются заново.
+Скрипт скачивает `pubmed26n0001.xml.gz` … `pubmed26n1334.xml.gz` и их `.md5`-файлы с `https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/` по пять файлов одновременно: архивы в `input_raws/full_pubmed_baseline_2026/`, а `.md5` в отдельный `input_raws/full_pubmed_baseline_2026_md5/`. Каталоги разделены, потому что Java (`FileSource`) и PySpark читают все файлы во входном каталоге. Каждый архив проверяется по MD5. Скрипт можно безопасно перезапускать: уже скачанные файлы пропускаются и проверяются заново.
 
 > **Примечание:** NCBI обновляет baseline раз в год (обычно в декабре–январе). После публикации baseline 2027 файлы `pubmed26n*` исчезнут с FTP. Префикс файлов (`pubmed26n`) и их количество (1334) зашиты в [`downloader.py`](pubmed-data-downloader/downloader.py) — тогда их нужно будет обновить.
 
