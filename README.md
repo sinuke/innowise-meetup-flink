@@ -120,7 +120,7 @@ uv run python application.py
 
 Flink UI: http://localhost:8081. Задача выполняется на локальном MiniCluster, который запускает PyFlink.
 
-По умолчанию стоит `EXECUTION_MODE = 'thread'`: на этой задаче он в ~20 раз быстрее, чем стандартный для PyFlink режим `'process'`. Не меняйте `_python_worker_execution_mode`: это не связанная с ним внутренняя настройка, она должна оставаться `'process'`. Подробности — в [`CLAUDE.md`](CLAUDE.md).
+По умолчанию стоит `EXECUTION_MODE = 'thread'`: на этой задаче он в ~20 раз быстрее, чем стандартный для PyFlink режим `'process'`. Не меняйте `_python_worker_execution_mode`: это не связанная с ним внутренняя настройка, она должна оставаться `'process'`.
 
 ### PySpark
 
