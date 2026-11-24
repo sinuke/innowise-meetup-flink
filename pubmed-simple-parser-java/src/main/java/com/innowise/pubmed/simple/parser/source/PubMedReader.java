@@ -72,7 +72,6 @@ public class PubMedReader implements StreamFormat.Reader<PubMedRecord> {
         return null;
     }
 
-    /** Reads the current {@code <Author>} up to its end tag: "ForeName LastName", else CollectiveName, else "". */
     private String readAuthor() throws XMLStreamException {
         String foreName = "", lastName = "", collectiveName = "";
 
@@ -97,10 +96,6 @@ public class PubMedReader implements StreamFormat.Reader<PubMedRecord> {
         return "";
     }
 
-    /**
-     * Reads all text of the current element, including nested markup like {@code <i>} or {@code <sup>},
-     * and leaves the reader on its end tag. Unlike {@link XMLStreamReader#getElementText()}, does not fail on child elements.
-     */
     private String readText() throws XMLStreamException {
         buffer.setLength(0);
         for (int depth = 1; depth > 0; ) {
