@@ -6,17 +6,21 @@ import org.apache.flink.connector.file.src.reader.StreamFormat;
 import org.apache.flink.core.fs.FSDataInputStream;
 
 import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 import java.io.BufferedInputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import static java.util.Objects.requireNonNullElse;
+import static javax.xml.stream.XMLStreamConstants.CHARACTERS;
+import static javax.xml.stream.XMLStreamConstants.END_ELEMENT;
+import static javax.xml.stream.XMLStreamConstants.START_ELEMENT;
+
 public class PubMedReader implements StreamFormat.Reader<PubMedRecord> {
     private final XMLStreamReader reader;
 
-    private final StringBuilder textBuffer = new StringBuilder();
-    private final StringBuilder titleBuffer = new StringBuilder();
+    private final StringBuilder buffer = new StringBuilder();
 
     @SneakyThrows
     public PubMedReader(FSDataInputStream stream) {
@@ -33,84 +37,30 @@ public class PubMedReader implements StreamFormat.Reader<PubMedRecord> {
     public PubMedRecord read() {
         String pmid = null, title = null, issn = null;
         List<String> authors = new ArrayList<>();
-
-        String foreName = "", lastName = "", collectiveName = "";
-        boolean inMedlineCitation = false, inArticleTitle = false, inAuthor = false, capturingLeaf = false;
+        boolean inMedlineCitation = false;
 
         while (reader.hasNext()) {
-            int event = reader.next();
-
-            switch (event) {
-                case XMLStreamConstants.START_ELEMENT -> {
-                    String tag = reader.getLocalName();
-
-                    switch (tag) {
+            switch (reader.next()) {
+                case START_ELEMENT -> {
+                    switch (reader.getLocalName()) {
                         case "MedlineCitation" -> inMedlineCitation = true;
-                        case "ArticleTitle" -> {
-                            inArticleTitle = true;
-                            titleBuffer.setLength(0);
-                        }
+                        case "PMID" -> { if (inMedlineCitation && pmid == null) pmid = readText(); }
+                        case "ISSN" -> { if (issn == null) issn = readText(); }
+                        case "ArticleTitle" -> title = readText();
                         case "Author" -> {
-                            inAuthor = true;
-                            foreName = "";
-                            lastName = "";
-                            collectiveName = "";
-                        }
-                        case "PMID", "ISSN", "ForeName", "LastName", "CollectiveName" -> {
-                            capturingLeaf = true;
-                            textBuffer.setLength(0);
+                            String author = readAuthor();
+                            if (!author.isEmpty()) authors.add(author);
                         }
                     }
                 }
-                case XMLStreamConstants.CHARACTERS -> {
-                    if (inArticleTitle) {
-                        titleBuffer.append(reader.getText());
-                    } else if (capturingLeaf) {
-                        textBuffer.append(reader.getText());
-                    }
-                }
-                case XMLStreamConstants.END_ELEMENT -> {
-                    String tag = reader.getLocalName();
-
-                    switch (tag) {
+                case END_ELEMENT -> {
+                    switch (reader.getLocalName()) {
                         case "MedlineCitation" -> inMedlineCitation = false;
-                        case "PMID" -> {
-                            if (inMedlineCitation && pmid == null) pmid = textBuffer.toString().trim();
-                            capturingLeaf = false;
-                        }
-                        case "ArticleTitle" -> {
-                            inArticleTitle = false;
-                            title = titleBuffer.toString().trim();
-                        }
-                        case "ISSN" -> {
-                            if (issn == null) issn = textBuffer.toString().trim();
-                            capturingLeaf = false;
-                        }
-                        case "ForeName" -> {
-                            if (inAuthor) foreName = textBuffer.toString().trim();
-                            capturingLeaf = false;
-                        }
-                        case "LastName" -> {
-                            if (inAuthor) lastName = textBuffer.toString().trim();
-                            capturingLeaf = false;
-                        }
-                        case "CollectiveName" -> {
-                            if (inAuthor) collectiveName = textBuffer.toString().trim();
-                            capturingLeaf = false;
-                        }
-                        case "Author" -> {
-                            inAuthor = false;
-                            if (!foreName.isEmpty() || !lastName.isEmpty()) {
-                                authors.add((foreName + " " + lastName).trim());
-                            } else if (!collectiveName.isEmpty()) {
-                                authors.add(collectiveName);
-                            }
-                        }
                         case "PubmedArticle" -> {
                             return new PubMedRecord(
-                                    pmid == null ? "" : pmid,
-                                    title == null ? "" : title,
-                                    issn == null ? "" : issn,
+                                    requireNonNullElse(pmid, ""),
+                                    requireNonNullElse(title, ""),
+                                    requireNonNullElse(issn, ""),
                                     authors
                             );
                         }
@@ -120,6 +70,47 @@ public class PubMedReader implements StreamFormat.Reader<PubMedRecord> {
         }
 
         return null;
+    }
+
+    /** Reads the current {@code <Author>} up to its end tag: "ForeName LastName", else CollectiveName, else "". */
+    private String readAuthor() throws XMLStreamException {
+        String foreName = "", lastName = "", collectiveName = "";
+
+        while (reader.hasNext()) {
+            switch (reader.next()) {
+                case START_ELEMENT -> {
+                    switch (reader.getLocalName()) {
+                        case "ForeName" -> foreName = readText();
+                        case "LastName" -> lastName = readText();
+                        case "CollectiveName" -> collectiveName = readText();
+                    }
+                }
+                case END_ELEMENT -> {
+                    if (reader.getLocalName().equals("Author")) {
+                        String name = (foreName + " " + lastName).trim();
+                        return name.isEmpty() ? collectiveName : name;
+                    }
+                }
+            }
+        }
+
+        return "";
+    }
+
+    /**
+     * Reads all text of the current element, including nested markup like {@code <i>} or {@code <sup>},
+     * and leaves the reader on its end tag. Unlike {@link XMLStreamReader#getElementText()}, does not fail on child elements.
+     */
+    private String readText() throws XMLStreamException {
+        buffer.setLength(0);
+        for (int depth = 1; depth > 0; ) {
+            switch (reader.next()) {
+                case CHARACTERS -> buffer.append(reader.getText());
+                case START_ELEMENT -> depth++;
+                case END_ELEMENT -> depth--;
+            }
+        }
+        return buffer.toString().trim();
     }
 
     @Override
