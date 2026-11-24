@@ -2,7 +2,61 @@ import gzip
 import xml.parsers.expat
 
 _CHUNK_SIZE = 1 << 16  # 64 KiB
-_LEAF_TAGS = frozenset({'PMID', 'ISSN', 'ForeName', 'LastName', 'CollectiveName'})
+_TEXT_TAGS = frozenset({'PMID', 'ArticleTitle', 'ISSN', 'ForeName', 'LastName', 'CollectiveName'})
+
+
+class _PubMedHandler:
+    """expat callbacks; finished records are appended to `pending` as (pmid, title, issn, authors)."""
+
+    def __init__(self, pending: list):
+        self.pending = pending
+        self.capturing = None  # tag whose text is being collected; nested markup (<i>, <sup>) stays inside it
+        self.buf = []
+        self.in_medline_citation = False
+        self.author = None  # name parts of the current <Author>, None outside of it
+        self.pmid = self.title = self.issn = None
+        self.authors = []
+
+    def start(self, name, attrs):
+        if name in _TEXT_TAGS:
+            self.capturing = name
+            self.buf.clear()
+        elif name == 'MedlineCitation':
+            self.in_medline_citation = True
+        elif name == 'Author':
+            self.author = {}
+
+    def chars(self, data):
+        if self.capturing:
+            self.buf.append(data)
+
+    def end(self, name):
+        if name == self.capturing:
+            self.capturing = None
+            text = ''.join(self.buf).strip()
+            if name == 'PMID':
+                if self.in_medline_citation and self.pmid is None:
+                    self.pmid = text
+            elif name == 'ArticleTitle':
+                self.title = text
+            elif name == 'ISSN':
+                if self.issn is None:
+                    self.issn = text
+            elif self.author is not None:  # ForeName / LastName / CollectiveName
+                self.author[name] = text
+        elif name == 'MedlineCitation':
+            self.in_medline_citation = False
+        elif name == 'Author':
+            a = self.author
+            full_name = f"{a.get('ForeName', '')} {a.get('LastName', '')}".strip() or a.get('CollectiveName', '')
+            if full_name:
+                self.authors.append(full_name)
+            self.author = None
+        elif name == 'PubmedArticle':
+            self.pending.append((self.pmid or '', self.title or '', self.issn or '', self.authors))
+            self.pmid = self.title = self.issn = None
+            self.authors = []
+            self.in_medline_citation = False
 
 
 def _make_parser(pending: list):
@@ -12,86 +66,10 @@ def _make_parser(pending: list):
     parser.SetParamEntityParsing(xml.parsers.expat.XML_PARAM_ENTITY_PARSING_NEVER)
     parser.ExternalEntityRefHandler = lambda context, base, system_id, public_id: 0
 
-    state = {
-        'pmid': None, 'title': None, 'issn': None, 'authors': [],
-        'fore_name': '', 'last_name': '', 'collective_name': '',
-        'in_medline_citation': False, 'in_article_title': False, 'in_author': False,
-        'capturing_leaf': False, 'text_buf': [], 'title_buf': [],
-    }
-
-    def reset_record_state():
-        state.update(
-            pmid=None, title=None, issn=None, authors=[],
-            fore_name='', last_name='', collective_name='',
-            in_medline_citation=False, in_article_title=False, in_author=False,
-            capturing_leaf=False,
-        )
-
-    def start_element(name, attrs):
-        if name == 'MedlineCitation':
-            state['in_medline_citation'] = True
-        elif name == 'ArticleTitle':
-            state['in_article_title'] = True
-            state['title_buf'] = []
-        elif name == 'Author':
-            state['in_author'] = True
-            state['fore_name'] = ''
-            state['last_name'] = ''
-            state['collective_name'] = ''
-        elif name in _LEAF_TAGS:
-            state['capturing_leaf'] = True
-            state['text_buf'] = []
-
-    def char_data(data):
-        if state['in_article_title']:
-            state['title_buf'].append(data)
-        elif state['capturing_leaf']:
-            state['text_buf'].append(data)
-
-    def end_element(name):
-        if name == 'MedlineCitation':
-            state['in_medline_citation'] = False
-        elif name == 'PMID':
-            if state['in_medline_citation'] and state['pmid'] is None:
-                state['pmid'] = ''.join(state['text_buf']).strip()
-            state['capturing_leaf'] = False
-        elif name == 'ArticleTitle':
-            state['in_article_title'] = False
-            state['title'] = ''.join(state['title_buf']).strip()
-        elif name == 'ISSN':
-            if state['issn'] is None:
-                state['issn'] = ''.join(state['text_buf']).strip()
-            state['capturing_leaf'] = False
-        elif name == 'ForeName':
-            if state['in_author']:
-                state['fore_name'] = ''.join(state['text_buf']).strip()
-            state['capturing_leaf'] = False
-        elif name == 'LastName':
-            if state['in_author']:
-                state['last_name'] = ''.join(state['text_buf']).strip()
-            state['capturing_leaf'] = False
-        elif name == 'CollectiveName':
-            if state['in_author']:
-                state['collective_name'] = ''.join(state['text_buf']).strip()
-            state['capturing_leaf'] = False
-        elif name == 'Author':
-            state['in_author'] = False
-            if state['fore_name'] or state['last_name']:
-                state['authors'].append(f"{state['fore_name']} {state['last_name']}".strip())
-            elif state['collective_name']:
-                state['authors'].append(state['collective_name'])
-        elif name == 'PubmedArticle':
-            pending.append((
-                state['pmid'] or '',
-                state['title'] or '',
-                state['issn'] or '',
-                state['authors'],
-            ))
-            reset_record_state()
-
-    parser.StartElementHandler = start_element
-    parser.CharacterDataHandler = char_data
-    parser.EndElementHandler = end_element
+    handler = _PubMedHandler(pending)
+    parser.StartElementHandler = handler.start
+    parser.CharacterDataHandler = handler.chars
+    parser.EndElementHandler = handler.end
     return parser
 
 
